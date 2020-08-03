@@ -3,6 +3,9 @@
  * Author:
  *    Robin Zon <https://github.com/ZonRobin>
  *
+ * Content-type POST improvements:
+     Lorenzo Sfarra <https://lorenzosfarra.com>
+ *
  * Credits to:
  *    https://github.com/cowboy/php-simple-proxy/
  *    https://gist.github.com/iovar
@@ -22,8 +25,10 @@
  */
 //----------------------------------------------------------------------------------
 
+require 'random_user_agent.php';
+
 // Your private auth key
-define('AUTH_KEY', 'Bj5pnZEX6DkcG6Nz6AjDUT1bvcGRVhRaXDuKDX9CjsEs2');
+define('AUTH_KEY', 'm8kDEtZefDk3Np7sHDmGG6J7fP6jRqrg43CJEX4kmWuCc');
 
 // Name of the proxy auth key header
 define('HTTP_PROXY_AUTH', 'HTTP_PROXY_AUTH');
@@ -44,7 +49,7 @@ define('HTTP_PROXY_DEBUG', 'HTTP_PROXY_DEBUG');
 // $_SERVER[HTTP_PROXY_DEBUG] = '1';
 
 // If true, PHP safe mode compatibility will not be checked (you may not need it if no POST files are sent over proxy)
-define('IGNORE_SAFE_MODE', false);
+define('IGNORE_SAFE_MODE', true);
 
 // Line break for debug purposes
 define('HR', PHP_EOL . PHP_EOL . '----------------------------------------------' . PHP_EOL . PHP_EOL);
@@ -177,6 +182,35 @@ $request = curl_init($targetURL);
 
 //-------------------------------
 
+$is_www_encoded = false;
+//--------------------------------
+
+// Parse request headers
+$httpHeaders = array();
+$httpHeadersAll = array();
+foreach ($_SERVER as $key => $value) {
+    if ((strpos($key, 'HTTP_') === 0) || ($key === 'CONTENT_LENGTH') || ($key === 'CONTENT_TYPE')) {
+        $header_key = str_replace(
+            '_',
+            '-',
+            ucwords(strtolower(str_replace('HTTP_', '', $key)), '_')
+        );
+        $header = "$header_key: $value";
+        if (
+            (strtoupper($key) === 'CONTENT_TYPE') &&
+            (strtolower($value) === 'application/x-www-form-urlencoded')
+        ) {
+            $is_www_encoded = true;
+        }
+
+        if (!in_array($key, getSkippedHeaders())) {
+            $httpHeaders[] = $header;
+        }
+
+        $httpHeadersAll[] = $header;
+    }
+}
+
 // Set input data
 $requestMethod = strtoupper(ri($_SERVER['REQUEST_METHOD']));
 if ($requestMethod === "PUT" || $requestMethod === "PATCH") {
@@ -200,28 +234,11 @@ if ($requestMethod === "PUT" || $requestMethod === "PATCH") {
         }
     }
 
-    curl_setopt($request, CURLOPT_POSTFIELDS, $data + $_POST);
-}
-
-//--------------------------------
-
-// Parse request headers
-$httpHeaders = array();
-$httpHeadersAll = array();
-foreach ($_SERVER as $key => $value) {
-    if (strpos($key, 'HTTP_') === 0) {
-        $header = str_replace(
-                '_',
-                '-',
-                ucwords(strtolower(str_replace('HTTP_', '', $key)), '_')
-            ) . ': ' . $value;
-
-        if (!in_array($key, getSkippedHeaders())) {
-            $httpHeaders[] = $header;
-        }
-
-        $httpHeadersAll[] = $header;
+    $post_params = $data + $_POST;
+    if ($is_www_encoded) {
+        $post_params = http_build_query($post_params);
     }
+    curl_setopt($request, CURLOPT_POSTFIELDS, $post_params);
 }
 
 curl_setopt_array($request, [
